@@ -250,25 +250,24 @@ card_fraud$weekday <- factor(card_fraud$weekday)
 
 ```{r}
 # fraud over location (map using lat and long)
-df_fraud_over_city <- card_fraud %>%
+card_fraud %>%
   group_by(state, city) %>%
   summarize(
     lon = mean(long),
     lat = mean(lat),
     num_of_fraud = sum(is_fraud==1),
     num_of_non_fraud=sum(is_fraud==0)
-  )
-
-leaflet(data = df_fraud_over_city) %>%
-  addTiles() %>%
-  addCircleMarkers(
-    ~lon, ~lat,
-    radius = ~(num_of_fraud / num_of_non_fraud) * 300,
-    color = ~colorFactor(rainbow(length(unique(df_fraud_over_city$state))), df_fraud_over_city$state)(state),
-    stroke = FALSE, fillOpacity = 0.8,
-    popup = ~paste(city)
-  ) %>%
-  addLegend('bottomright', pal = colorFactor(rainbow(length(unique(df_fraud_over_city$state))), df_fraud_over_city$state), values = ~state, title = 'State', opacity = 1)
+  ) %>% 
+  leaflet() %>%
+    addTiles() %>%
+    addCircleMarkers(
+      ~lon, ~lat,
+      radius = ~(num_of_fraud / num_of_non_fraud) * 300,
+      color = ~colorFactor(rainbow(length(unique(df_fraud_over_city$state))), df_fraud_over_city$state)(state),
+      stroke = FALSE, fillOpacity = 0.8,
+      popup = ~paste(city)
+    ) %>%
+    addLegend('bottomright', pal = colorFactor(rainbow(length(unique(df_fraud_over_city$state))), df_fraud_over_city$state), values = ~state, title = 'State', opacity = 1)
 ```
 
 ## Visualize fraud over weekday
@@ -336,16 +335,15 @@ card_fraud <- card_fraud %>%
     mutate(day_in_the_year=as.Date(trans_date_trans_time, format="%Y-%m-%d %H:%M:%S"),
            day_of_year=yday(trans_date_trans_time)) 
 
-df_fraud_over_trans_date <- card_fraud %>%
+card_fraud %>%
     group_by(trans_year, day_of_year) %>%
     summarize(
       num_of_fraud = sum(as.double(is_fraud))
-    )
-
-ggplot(data = df_fraud_over_trans_date, aes(x = day_of_year, y = num_of_fraud, color=trans_year)) +
-    geom_smooth() +
-    labs(x = "Day in the year", y = "Number of fraudulent transactions", title = "Number of fraud over time") +
-    theme_minimal()
+    ) %>% 
+    ggplot(aes(x = day_of_year, y = num_of_fraud, color=trans_year)) +
+      geom_smooth() +
+      labs(x = "Day in the year", y = "Number of fraudulent transactions", title = "Number of fraud over time") +
+      theme_minimal()
 ```
 
 

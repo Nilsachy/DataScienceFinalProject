@@ -28,6 +28,7 @@ library(here)
 library(tictoc)
 library(vip)
 library(ranger)
+library(leaflet)
 ```
 
 # The problem: predicting credit card fraud
@@ -194,6 +195,158 @@ You have a number of variables and you have to decide which ones to use in your 
 You will be running a series of different models, along the lines of the California housing example we have seen in class. However, this dataset has 670K rows and if you try various models and run cross validation on them, your computer may slow down or crash.
 
 Thus, we will work with a smaller sample of 10% of the values the original dataset to identify the best model, and once we have the best model we can use the full dataset to train- test our best model.
+
+## Split trans_date_trans_time to year, month, date, hour, minute, and second
+
+```{r}
+card_fraud <- card_fraud %>% 
+  mutate(trans_date_trans_time = as.POSIXct(trans_date_trans_time , format = "%Y-%m-%d %H:%M:%S"),
+         trans_year=as.numeric(format(trans_date_trans_time , "%Y")),
+         trans_month = as.numeric(format(trans_date_trans_time , "%m")),
+         trans_day = as.numeric(format(trans_date_trans_time , "%d")),
+         trans_hour = as.numeric(format(trans_date_trans_time , "%H")),
+         trans_minute = as.numeric(format(trans_date_trans_time , "%M")),
+         trans_second = as.numeric(format(trans_date_trans_time , "%S")))
+
+card_fraud <- card_fraud %>% 
+  mutate(dob = as.POSIXct(dob , format = "%Y-%m-%d"),
+         dob_year=as.numeric(format(dob , "%Y")),
+         dob_month = as.numeric(format(dob , "%m")),
+         dob_day = as.numeric(format(dob , "%d")))
+```
+
+## Split job into position and industry
+
+```{r}
+card_fraud <- separate(card_fraud, job, into = c("job_position", "job_industry"), sep = ", ")
+card_fraud$job_position <- factor(card_fraud$job_position)
+card_fraud$job_industry <- factor(card_fraud$job_industry)
+```
+
+## Find day of the week
+
+```{r}
+card_fraud <- card_fraud %>%
+    mutate(weekday=as.Date(trans_date_trans_time, format="%Y-%m-%d %H:%M:%S"),
+           weekday=weekdays(weekday),
+           age=round(as.numeric(trans_date_trans_time - dob) / 365.25))
+```
+
+## Convert categorical and non-ordinal numerical variables to factors
+
+```{r}
+card_fraud$trans_year <- factor(card_fraud$trans_year)
+card_fraud$trans_month <- factor(card_fraud$trans_month)
+card_fraud$trans_hour <- factor(card_fraud$trans_hour)
+card_fraud$trans_minute <- factor(card_fraud$trans_minute)
+card_fraud$trans_second <- factor(card_fraud$trans_second)
+card_fraud$category <- factor(card_fraud$category)
+card_fraud$city <- factor(card_fraud$city)
+card_fraud$state <- factor(card_fraud$state)
+card_fraud$weekday <- factor(card_fraud$weekday)
+```
+
+## Visualize fraud over location
+
+```{r}
+# fraud over location (map using lat and long)
+df_fraud_over_city <- card_fraud %>%
+  group_by(state, city) %>%
+  summarize(
+    lon = mean(long),
+    lat = mean(lat),
+    num_of_fraud = sum(is_fraud==1),
+    num_of_non_fraud=sum(is_fraud==0)
+  )
+
+leaflet(data = df_fraud_over_city) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    ~lon, ~lat,
+    radius = ~(num_of_fraud / num_of_non_fraud) * 300,
+    color = ~colorFactor(rainbow(length(unique(df_fraud_over_city$state))), df_fraud_over_city$state)(state),
+    stroke = FALSE, fillOpacity = 0.8,
+    popup = ~paste(city)
+  ) %>%
+  addLegend('bottomright', pal = colorFactor(rainbow(length(unique(df_fraud_over_city$state))), df_fraud_over_city$state), values = ~state, title = 'State', opacity = 1)
+```
+
+## Visualize fraud over weekday
+
+```{r}
+df_fraud_over_weekday <- card_fraud %>%
+    group_by(weekday) %>%
+    summarize(
+      num_of_fraud = sum(is_fraud==1),
+      num_of_non_fraud=sum(is_fraud==0)
+    )
+
+df_fraud_over_weekday <- na.omit(df_fraud_over_weekday)
+
+df_fraud_over_weekday$weekday <- factor(df_fraud_over_weekday$weekday, levels = c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'), ordered = TRUE)
+
+ggplot(data = df_fraud_over_weekday, aes(x = weekday, y = num_of_fraud/num_of_non_fraud)) +
+    geom_col() +
+    labs(x = "Weekday", y = "Ratio of fraudulent transactions", title = "Ratio of fraud happening on each day of the week") +
+    theme_minimal()
+```
+
+## Fraud over hour of the day
+
+```{r}
+df_fraud_over_time_of_day <- card_fraud %>%
+    group_by(trans_hour) %>%
+    summarize(
+      num_of_fraud = sum(is_fraud==1),
+      num_of_non_fraud=sum(is_fraud==0)
+    )
+
+df_fraud_over_time_of_day <- na.omit(df_fraud_over_time_of_day)
+
+ggplot(data = df_fraud_over_time_of_day, aes(x = trans_hour, y = num_of_fraud/num_of_non_fraud)) +
+    geom_col() +
+    labs(x = "Hour", y = "Ratio of fraudulent transactions", title = "Ratio of fraud happening per hour") +
+    theme_minimal()
+```
+
+## Visualize fraud ratio over age
+
+```{r}
+df_fraud_over_age <- card_fraud %>%
+    group_by(age) %>%
+    summarize(
+      num_of_fraud = sum(is_fraud==1),
+      num_of_non_fraud=sum(is_fraud==0)
+    )
+
+df_fraud_over_age <- na.omit(df_fraud_over_age)
+
+ggplot(data = df_fraud_over_age, aes(x = age, y = num_of_fraud/num_of_non_fraud)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = TRUE) +
+    labs(x = "Age", y = "Ratio of fraudulent transactions", title = "Ratio of fraud happening for each age in years") +
+    theme_minimal()
+```
+
+
+## Visualize number of fraudulent transactions over time
+
+```{r}
+card_fraud <- card_fraud %>%
+    mutate(day_in_the_year=as.Date(trans_date_trans_time, format="%Y-%m-%d %H:%M:%S"),
+           day_of_year=yday(trans_date_trans_time)) 
+
+df_fraud_over_trans_date <- card_fraud %>%
+    group_by(trans_year, day_of_year) %>%
+    summarize(
+      num_of_fraud = sum(as.double(is_fraud))
+    )
+
+ggplot(data = df_fraud_over_trans_date, aes(x = day_of_year, y = num_of_fraud, color=trans_year)) +
+    geom_smooth() +
+    labs(x = "Day in the year", y = "Number of fraudulent transactions", title = "Number of fraud over time") +
+    theme_minimal()
+```
 
 
 ```{r}

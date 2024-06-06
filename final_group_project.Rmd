@@ -196,18 +196,9 @@ You will be running a series of different models, along the lines of the Califor
 
 Thus, we will work with a smaller sample of 10% of the values the original dataset to identify the best model, and once we have the best model we can use the full dataset to train- test our best model.
 
-## Split trans_date_trans_time to year, month, date, hour, minute, and second
+## Split dob to year, month, date
 
 ```{r}
-card_fraud <- card_fraud %>% 
-  mutate(trans_date_trans_time = as.POSIXct(trans_date_trans_time , format = "%Y-%m-%d %H:%M:%S"),
-         trans_year=as.numeric(format(trans_date_trans_time , "%Y")),
-         trans_month = as.numeric(format(trans_date_trans_time , "%m")),
-         trans_day = as.numeric(format(trans_date_trans_time , "%d")),
-         trans_hour = as.numeric(format(trans_date_trans_time , "%H")),
-         trans_minute = as.numeric(format(trans_date_trans_time , "%M")),
-         trans_second = as.numeric(format(trans_date_trans_time , "%S")))
-
 card_fraud <- card_fraud %>% 
   mutate(dob = as.POSIXct(dob , format = "%Y-%m-%d"),
          dob_year=as.numeric(format(dob , "%Y")),
@@ -223,23 +214,9 @@ card_fraud$job_position <- factor(card_fraud$job_position)
 card_fraud$job_industry <- factor(card_fraud$job_industry)
 ```
 
-## Find day of the week
-
-```{r}
-card_fraud <- card_fraud %>%
-    mutate(weekday=as.Date(trans_date_trans_time, format="%Y-%m-%d %H:%M:%S"),
-           weekday=weekdays(weekday),
-           age=round(as.numeric(trans_date_trans_time - dob) / 365.25))
-```
-
 ## Convert categorical and non-ordinal numerical variables to factors
 
 ```{r}
-card_fraud$trans_year <- factor(card_fraud$trans_year)
-card_fraud$trans_month <- factor(card_fraud$trans_month)
-card_fraud$trans_hour <- factor(card_fraud$trans_hour)
-card_fraud$trans_minute <- factor(card_fraud$trans_minute)
-card_fraud$trans_second <- factor(card_fraud$trans_second)
 card_fraud$category <- factor(card_fraud$category)
 card_fraud$city <- factor(card_fraud$city)
 card_fraud$state <- factor(card_fraud$state)
@@ -256,13 +233,13 @@ card_fraud %>%
     lon = mean(long),
     lat = mean(lat),
     num_of_fraud = sum(is_fraud==1),
-    num_of_non_fraud=sum(is_fraud==0)
+    n = n()
   ) %>% 
   leaflet() %>%
     addTiles() %>%
     addCircleMarkers(
       ~lon, ~lat,
-      radius = ~(num_of_fraud / num_of_non_fraud) * 300,
+      radius = ~(num_of_fraud / n) * 5,
       color = ~colorFactor(rainbow(length(unique(df_fraud_over_city$state))), df_fraud_over_city$state)(state),
       stroke = FALSE, fillOpacity = 0.8,
       popup = ~paste(city)
@@ -273,58 +250,65 @@ card_fraud %>%
 ## Visualize fraud over weekday
 
 ```{r}
-df_fraud_over_weekday <- card_fraud %>%
-    group_by(weekday) %>%
+card_fraud %>%
+    filter(!wday == 'NA') %>% 
+    mutate(wday = factor(wday, levels = c('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'), ordered = TRUE)) %>% 
+    group_by(wday) %>%
     summarize(
-      num_of_fraud = sum(is_fraud==1),
-      num_of_non_fraud=sum(is_fraud==0)
-    )
-
-df_fraud_over_weekday <- na.omit(df_fraud_over_weekday)
-
-df_fraud_over_weekday$weekday <- factor(df_fraud_over_weekday$weekday, levels = c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'), ordered = TRUE)
-
-ggplot(data = df_fraud_over_weekday, aes(x = weekday, y = num_of_fraud/num_of_non_fraud)) +
-    geom_col() +
-    labs(x = "Weekday", y = "Ratio of fraudulent transactions", title = "Ratio of fraud happening on each day of the week") +
-    theme_minimal()
+      num_of_fraud = sum(is_fraud == 1),
+      n = n()
+    ) %>% 
+    ggplot(aes(x = wday, y = num_of_fraud/n)) +
+      geom_col() +
+      labs(x = "Weekday", y = "Ratio of fraudulent transactions", title = "Ratio of fraud happening on each day of the week") +
+      theme_minimal()
 ```
 
 ## Fraud over hour of the day
 
 ```{r}
-df_fraud_over_time_of_day <- card_fraud %>%
-    group_by(trans_hour) %>%
+card_fraud %>%
+    filter(!hour == 'NA') %>%
+    group_by(hour) %>%
     summarize(
       num_of_fraud = sum(is_fraud==1),
-      num_of_non_fraud=sum(is_fraud==0)
-    )
-
-df_fraud_over_time_of_day <- na.omit(df_fraud_over_time_of_day)
-
-ggplot(data = df_fraud_over_time_of_day, aes(x = trans_hour, y = num_of_fraud/num_of_non_fraud)) +
-    geom_col() +
-    labs(x = "Hour", y = "Ratio of fraudulent transactions", title = "Ratio of fraud happening per hour") +
-    theme_minimal()
+      n = n()
+    ) %>% 
+    ggplot(aes(x = hour, y = num_of_fraud/n)) +
+      geom_col() +
+      labs(x = "Hour", y = "Ratio of fraudulent transactions", title = "Ratio of fraud happening per hour") +
+      theme_minimal()
 ```
+We find three groups with different likelihoods of frauds / "peak hours" for fraudulent transactions. Based on this, we classify three groups for our model:
+
+```{r}
+card_fraud <- card_fraud %>% 
+  filter(!hour == 'NA') %>% 
+  mutate(time_interval = case_when(
+    hour <= 3 & hour >= 0 ~ "medium peak",
+    hour <= 21 & hour >= 4 ~ "offpeak",
+    TRUE ~ "peak"
+  ),
+  time_interval = factor(time_interval))
+```
+
 
 ## Visualize fraud ratio over age
 
 ```{r}
-df_fraud_over_age <- card_fraud %>%
+card_fraud %>%
+    filter(!age == 'NA') %>% 
+    mutate(age = round(age)) %>% 
     group_by(age) %>%
     summarize(
       num_of_fraud = sum(is_fraud==1),
-      num_of_non_fraud=sum(is_fraud==0)
-    )
-
-df_fraud_over_age <- na.omit(df_fraud_over_age)
-
-ggplot(data = df_fraud_over_age, aes(x = age, y = num_of_fraud/num_of_non_fraud)) +
-    geom_point() +
-    geom_smooth(method = "lm", se = TRUE) +
-    labs(x = "Age", y = "Ratio of fraudulent transactions", title = "Ratio of fraud happening for each age in years") +
-    theme_minimal()
+      n = n()
+    ) %>% 
+    ggplot(aes(x = age, y = num_of_fraud/n)) +
+      geom_point() +
+      geom_smooth(method = "lm", se = TRUE) +
+      labs(x = "Age", y = "Ratio of fraudulent transactions", title = "Ratio of fraud happening for each age in years") +
+      theme_minimal()
 ```
 
 
@@ -332,29 +316,45 @@ ggplot(data = df_fraud_over_age, aes(x = age, y = num_of_fraud/num_of_non_fraud)
 
 ```{r}
 card_fraud <- card_fraud %>%
-    mutate(day_in_the_year=as.Date(trans_date_trans_time, format="%Y-%m-%d %H:%M:%S"),
-           day_of_year=yday(trans_date_trans_time)) 
+    mutate(day_of_year=yday(trans_date_trans_time)) 
 
 card_fraud %>%
-    group_by(trans_year, day_of_year) %>%
+    group_by(day_of_year, year) %>%
     summarize(
-      num_of_fraud = sum(as.double(is_fraud))
+      num_of_fraud = sum(is_fraud == 1, na.rm=TRUE)
     ) %>% 
-    ggplot(aes(x = day_of_year, y = num_of_fraud, color=trans_year)) +
+  group_by(day_of_year) %>% 
+  summarize(num_of_fraud = mean(num_of_fraud)) %>% 
+    ggplot(aes(x = day_of_year, y = num_of_fraud)) +
       geom_smooth() +
       labs(x = "Day in the year", y = "Number of fraudulent transactions", title = "Number of fraud over time") +
       theme_minimal()
 ```
 
+```{r}
+card_fraud <- card_fraud %>% 
+                mutate(wday = factor(wday),
+                       month_name = factor(month_name),
+                       age_group = case_when(
+                         age < 20 ~ "< 20y",
+                         age >= 20 & age < 40 ~ "20y - 39y",
+                         age >= 40 & age < 60 ~ "40y - 59y",
+                         age >= 60 ~ "60+"
+                       ),
+                       age_group = factor(age_group))
+
+glimpse(card_fraud)
+```
 
 
 
 # Models
 
+
 ```{r}
 ### MANIPULATED DATA FOR SIMPLICITY, INSERT FINAL MODIFIED / ENGINEERED DF
 card_fraud <- card_fraud %>% 
-  select(year, category, amt, is_fraud, hour, wday, month_name, age)
+  select(category, amt, is_fraud, time_interval, wday, month_name, age_group, distance_km)
 ```
 
 
@@ -363,6 +363,7 @@ card_fraud <- card_fraud %>%
 my_card_fraud <- card_fraud %>% 
   # select a smaller subset, 10% of the entire dataframe 
   slice_sample(prop = 0.10) 
+
 ```
 
 
@@ -576,16 +577,16 @@ xgb_time <- time[[4]]
 
 
 # K-Nearest_Neighbour -> takes ages
-# tic()
-# knn_res <- knn_wflow %>% 
-#   fit_resamples(
-#     resamples = cv_folds, 
-#     metrics = metric_set(
-#       recall, precision, f_meas, accuracy,
-#       kap, roc_auc, sens, spec),
-#     control = control_resamples(save_pred = TRUE)) 
-# time <- toc()
-# knn_time <- time[[4]]
+tic()
+knn_res <- knn_wflow %>% 
+   fit_resamples(
+     resamples = cv_folds, 
+     metrics = metric_set(
+       recall, precision, f_meas, accuracy,
+       kap, roc_auc, sens, spec),
+     control = control_resamples(save_pred = TRUE)) 
+ time <- toc()
+ knn_time <- time[[4]]
 ```
 
 

@@ -220,7 +220,6 @@ card_fraud$job_industry <- factor(card_fraud$job_industry)
 card_fraud$category <- factor(card_fraud$category)
 card_fraud$city <- factor(card_fraud$city)
 card_fraud$state <- factor(card_fraud$state)
-card_fraud$weekday <- factor(card_fraud$weekday)
 ```
 
 ## Visualize fraud over location
@@ -239,12 +238,12 @@ card_fraud %>%
     addTiles() %>%
     addCircleMarkers(
       ~lon, ~lat,
-      radius = ~(num_of_fraud / n) * 5,
-      color = ~colorFactor(rainbow(length(unique(df_fraud_over_city$state))), df_fraud_over_city$state)(state),
+      radius = ~(num_of_fraud / n) * 10,
+      color = ~colorFactor(rainbow(length(unique(card_fraud$state))), card_fraud$state)(state),
       stroke = FALSE, fillOpacity = 0.8,
       popup = ~paste(city)
     ) %>%
-    addLegend('bottomright', pal = colorFactor(rainbow(length(unique(df_fraud_over_city$state))), df_fraud_over_city$state), values = ~state, title = 'State', opacity = 1)
+    addLegend('bottomright', pal = colorFactor(rainbow(length(unique(card_fraud$state))), card_fraud$state), values = ~state, title = 'State', opacity = 1)
 ```
 
 ## Visualize fraud over weekday

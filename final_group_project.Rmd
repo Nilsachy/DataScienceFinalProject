@@ -116,7 +116,7 @@ card_fraud <- card_fraud %>%
 
 ```
 
-## Exploratory Data Analysis (EDA) 
+# Exploratory Data Analysis (EDA) 
 
 You have done some EDA and you can pool together your group's expertise in which variables to use as features.
 You can reuse your EDA from earlier, but we expect at least a few visualisations and/or tables to explore teh dataset and identify any useful features.
@@ -347,6 +347,17 @@ card_fraud %>%
 ```
 
 
+
+
+# Models
+
+```{r}
+### MANIPULATED DATA FOR SIMPLICITY, INSERT FINAL MODIFIED / ENGINEERED DF
+card_fraud <- card_fraud %>% 
+  select(year, category, amt, is_fraud, hour, wday, month_name, age)
+```
+
+
 ```{r}
 # select a smaller subset
 my_card_fraud <- card_fraud %>% 
@@ -391,11 +402,15 @@ What steps are you going to add to your recipe? Do you need to do any log transf
 ```{r, define_recipe}
 
 fraud_rec <- recipe(is_fraud ~ ., data = card_fraud_train) %>%
+  step_log(amt) %>% 
+  step_naomit(everything(), skip = TRUE) %>% 
+  step_novel(all_nominal(), -all_outcomes()) %>%
+  step_normalize(all_numeric(), -all_outcomes()) %>% 
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_zv(all_numeric(), -all_outcomes()) # %>%
+  # step_corr(all_predictors(), threshold = 0.7, method = "spearman")
 
-
-
-
-
+fraud_rec
 ```
 
 Once you have your recipe, you can check the pre-processed dataframe 
@@ -428,14 +443,49 @@ You should define the following classification models:
 # 2. set the `engine`
 # 3. Set the `mode`:  classification
 
+# Logistic regression
+log_spec <-  logistic_reg() %>%  # model type
+  set_engine(engine = "glm") %>%  # model engine
+  set_mode("classification") # model mode
+
+# Show your model specification
+log_spec
+
+# Decision Tree
+tree_spec <- decision_tree() %>%
+  set_engine(engine = "C5.0") %>%
+  set_mode("classification")
+
+tree_spec
+
+# Random Forest
+library(ranger)
+
+rf_spec <- 
+  rand_forest() %>% 
+  set_engine("ranger", importance = "impurity") %>% 
+  set_mode("classification")
+
+
+# Boosted tree (XGBoost)
+library(xgboost)
+
+xgb_spec <- 
+  boost_tree() %>% 
+  set_engine("xgboost") %>% 
+  set_mode("classification") 
+
+# K-nearest neighbour (k-NN)
+knn_spec <- 
+  nearest_neighbor(neighbors = 4) %>% # we can adjust the number of neighbors 
+  set_engine("kknn") %>% 
+  set_mode("classification") 
 
 ```
 
 ## Bundle recipe and model with `workflows`
 
 ```{r, define_workflows}
-
-
 ## Bundle recipe and model with `workflows`
 
 
@@ -443,6 +493,29 @@ log_wflow <- # new workflow object
  workflow() %>% # use workflow function
  add_recipe(fraud_rec) %>%   # use the new recipe
  add_model(log_spec)   # add your model spec
+
+
+## A few more workflows
+
+tree_wflow <-
+ workflow() %>%
+ add_recipe(fraud_rec) %>% 
+ add_model(tree_spec) 
+
+rf_wflow <-
+ workflow() %>%
+ add_recipe(fraud_rec) %>% 
+ add_model(rf_spec) 
+
+xgb_wflow <-
+ workflow() %>%
+ add_recipe(fraud_rec) %>% 
+ add_model(xgb_spec)
+
+knn_wflow <-
+ workflow() %>%
+ add_recipe(fraud_rec) %>% 
+ add_model(knn_spec)
 
 ```
 
@@ -452,6 +525,7 @@ log_wflow <- # new workflow object
 You may want to compare the time it takes to fit each model. `tic()` starts a simple timer and `toc()` stops it
 
 ```{r, fit_models}
+# Log model
 tic()
 log_res <- log_wflow %>% 
   fit_resamples(
@@ -464,7 +538,56 @@ time <- toc()
 log_time <- time[[4]]
 
 
+# tree model
+tic()
+tree_res <- tree_wflow %>% 
+  fit_resamples(
+    resamples = cv_folds, 
+    metrics = metric_set(
+      recall, precision, f_meas, accuracy,
+      kap, roc_auc, sens, spec),
+    control = control_resamples(save_pred = TRUE)) 
+time <- toc()
+tree_time <- time[[4]]
+
+# Random forest
+rf_res <- rf_wflow %>% 
+  fit_resamples(
+    resamples = cv_folds, 
+    metrics = metric_set(
+      recall, precision, f_meas, accuracy,
+      kap, roc_auc, sens, spec),
+    control = control_resamples(save_pred = TRUE)) 
+time <- toc()
+rf_time <- time[[4]]
+
+
+# XGBoost
+tic()
+xgb_res <- xgb_wflow %>% 
+  fit_resamples(
+    resamples = cv_folds, 
+    metrics = metric_set(
+      recall, precision, f_meas, accuracy,
+      kap, roc_auc, sens, spec),
+    control = control_resamples(save_pred = TRUE)) 
+time <- toc()
+xgb_time <- time[[4]]
+
+
+# K-Nearest_Neighbour -> takes ages
+# tic()
+# knn_res <- knn_wflow %>% 
+#   fit_resamples(
+#     resamples = cv_folds, 
+#     metrics = metric_set(
+#       recall, precision, f_meas, accuracy,
+#       kap, roc_auc, sens, spec),
+#     control = control_resamples(save_pred = TRUE)) 
+# time <- toc()
+# knn_time <- time[[4]]
 ```
+
 
 ## Compare models
 
@@ -473,17 +596,46 @@ log_time <- time[[4]]
 
 log_metrics <- 
   log_res %>% 
-  collect_metrics(summarise = TRUE) %>%
+  collect_metrics(summarize = TRUE) %>%
   # add the name of the model to every row
   mutate(model = "Logistic Regression",
          time = log_time)
 
-# add mode models here
+# add more models here
+
+tree_metrics <- 
+  tree_res %>% 
+  collect_metrics(summarize = TRUE) %>%
+  # add the name of the model to every row
+  mutate(model = "Decision Tree",
+         time = tree_time)
+
+
+rf_metrics <- 
+  rf_res %>% 
+  collect_metrics(summarize = TRUE) %>%
+  # add the name of the model to every row
+  mutate(model = "Random Forest",
+         time = rf_time)
+
+xgb_metrics <- 
+  xgb_res %>% 
+  collect_metrics(summarize = TRUE) %>%
+  # add the name of the model to every row
+  mutate(model = "XGBoost",
+         time = xgb_time)
+
+knn_metrics <- 
+  knn_res %>% 
+  collect_metrics(summarize = TRUE) %>%
+  # add the name of the model to every row
+  mutate(model = "K-Nearest-Neighbour",
+         time = knn_time)
 
 # create dataframe with all models
 model_compare <- bind_rows(log_metrics,
-                            tree_metrics,
-                            rf_metrics,
+                           tree_metrics,
+                           rf_metrics,
                            xgb_metrics,
                            knn_metrics
                       ) %>% 
@@ -492,8 +644,34 @@ model_compare <- bind_rows(log_metrics,
            as.double()
          )
 
-
+model_compare
 ```
+
+```{r}
+#Pivot wider to create barplot
+  model_comp <- model_compare %>% 
+  select(model, .metric, mean, std_err) %>% 
+  pivot_wider(names_from = .metric, values_from = c(mean, std_err)) 
+
+# show mean are under the curve (ROC-AUC) for every model
+model_comp %>% 
+  arrange(mean_roc_auc) %>% 
+  mutate(model = fct_reorder(model, mean_roc_auc)) %>% # order results
+  ggplot(aes(model, mean_roc_auc, fill=model)) +
+  geom_col() +
+  coord_flip() +
+  scale_fill_brewer(palette = "Blues") +
+   geom_text(
+     size = 3,
+     aes(label = round(mean_roc_auc, 2), 
+         y = mean_roc_auc + 0.08),
+     vjust = 1
+  )+
+  theme_light()+
+  theme(legend.position = "none")+
+  labs(y = "Mean ROC area under curve")
+```
+
 
 ## Which metric to use
 
@@ -507,7 +685,16 @@ This is a highly imbalanced data set, as roughly 99.5% of all transactions are o
 # - `last_fit()`  fits a model to the whole training data and evaluates it on the test set. 
 # - provide the workflow object of the best model as well as the data split object (not the training data). 
  
+last_fit_xgb <- last_fit(xgb_wflow, 
+                        split = data_split,
+                        metrics = metric_set(
+                          accuracy, f_meas, kap, precision,
+                          recall, roc_auc, sens, spec))
 
+last_fit_xgb %>% collect_metrics(summarize = TRUE)
+
+#Compare to training subsample
+xgb_res %>% collect_metrics(summarize = TRUE)
 ```
 
 
@@ -516,7 +703,15 @@ This is a highly imbalanced data set, as roughly 99.5% of all transactions are o
 
 
 ```{r}
+## Variable importance using `{vip}` package
 
+library(vip)
+
+last_fit_xgb %>% 
+  pluck(".workflow", 1) %>%   
+  pull_workflow_fit() %>% 
+  vip(num_features = 10) +
+  theme_light()
 ```
 
 ## Plot Final Confusion matrix and ROC curve
@@ -538,8 +733,7 @@ last_fit_xgb %>%
   autoplot()
 ```
 
-
-##  Calculating the cost of fraud to the company
+#  Calculating the cost of fraud to the company
 
 
 - How much money (in US\$ terms) are fraudulent transactions costing the company? Generate a table that summarizes the total amount of legitimate and fraudulent transactions per year and calculate the % of fraudulent transactions, in US\$ terms. Compare your model vs the naive classification that we do not have any fraudulent transactions. 

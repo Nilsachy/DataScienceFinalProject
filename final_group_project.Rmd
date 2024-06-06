@@ -156,7 +156,6 @@ card_fraud %>%
   count(job, sort=TRUE) %>% 
   mutate(perc = n/sum(n))
 
-
 ```
 
 
@@ -196,15 +195,7 @@ You will be running a series of different models, along the lines of the Califor
 
 Thus, we will work with a smaller sample of 10% of the values the original dataset to identify the best model, and once we have the best model we can use the full dataset to train- test our best model.
 
-## Split dob to year, month, date
 
-```{r}
-card_fraud <- card_fraud %>% 
-  mutate(dob = as.POSIXct(dob , format = "%Y-%m-%d"),
-         dob_year=as.numeric(format(dob , "%Y")),
-         dob_month = as.numeric(format(dob , "%m")),
-         dob_day = as.numeric(format(dob , "%d")))
-```
 
 ## Split job into position and industry
 
@@ -310,6 +301,40 @@ card_fraud %>%
       theme_minimal()
 ```
 
+```{r}
+# Define age groups
+card_fraud <- card_fraud %>% 
+                mutate(wday = factor(wday),
+                       month_name = factor(month_name),
+                       age_group = case_when(
+                         age < 20 ~ "< 20y",
+                         age >= 20 & age < 40 ~ "20y - 39y",
+                         age >= 40 & age < 60 ~ "40y - 59y",
+                         age >= 60 ~ "60+"
+                       ),
+                       age_group = factor(age_group))
+
+# show frauds per age group
+card_fraud %>% 
+  group_by(age_group) %>% 
+  mutate(is_fraud = as.integer(is_fraud)) %>% 
+  summarise(n = n(),
+            frauds = sum(is_fraud == 1)) %>% 
+  # calculate percentage of fraudulent over total transactions
+  mutate(percent = frauds / n) %>% 
+
+  # investigate relationship graphically
+  ggplot(aes(x = age_group, y = percent)) +
+  geom_col() +
+  # make plot nice
+  theme_minimal() +
+  labs(x = "Age Group",
+       y = "Percentage of Fraudulent Transactions",
+       title = "Oldest age group is defrauded more often") +
+  NULL
+```
+
+
 
 ## Visualize number of fraudulent transactions over time
 
@@ -326,22 +351,14 @@ card_fraud %>%
   summarize(num_of_fraud = mean(num_of_fraud)) %>% 
     ggplot(aes(x = day_of_year, y = num_of_fraud)) +
       geom_smooth() +
-      labs(x = "Day in the year", y = "Number of fraudulent transactions", title = "Number of fraud over time") +
+      labs(x = "Day in the year", 
+           y = "Daily number of fraudulent transactions", 
+           title = "Fraudulent transaction increase towards the end of the year") +
       theme_minimal()
 ```
 
 ```{r}
-card_fraud <- card_fraud %>% 
-                mutate(wday = factor(wday),
-                       month_name = factor(month_name),
-                       age_group = case_when(
-                         age < 20 ~ "< 20y",
-                         age >= 20 & age < 40 ~ "20y - 39y",
-                         age >= 40 & age < 60 ~ "40y - 59y",
-                         age >= 60 ~ "60+"
-                       ),
-                       age_group = factor(age_group))
-
+# final glimpse
 glimpse(card_fraud)
 ```
 
@@ -351,10 +368,14 @@ glimpse(card_fraud)
 
 
 ```{r}
-### MANIPULATED DATA FOR SIMPLICITY, INSERT FINAL MODIFIED / ENGINEERED DF
+# We choose to build or models on the following variables
 card_fraud <- card_fraud %>% 
-  select(category, amt, is_fraud, time_interval, wday, month_name, age_group, distance_km)
+  select(category, amt, is_fraud, time_interval, 
+         wday, month_name, age_group, distance_km)
 ```
+
+
+> PLEASE WRITE A RATIONALE FOR THE MODEL HERE!!! 
 
 
 ```{r}

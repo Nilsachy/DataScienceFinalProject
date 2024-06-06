@@ -738,6 +738,25 @@ model_comp %>%
 
 This is a highly imbalanced data set, as roughly 99.5% of all transactions are ok, and it's only 0.5% of transactions that are fraudulent. A `naive` model, which classifies everything as ok and not-fraud, would have an accuracy of 99.5%, but what about the sensitivity, specificity, the AUC, etc?
 
+```{r}
+library(pROC)
+library(caret)
+
+glimpse(card_fraud_test)
+
+naive_preds <- tibble(preds = rep(0, 13421))
+roc_curve = roc(card_fraud_test$is_fraud, naive_preds$preds)
+auc_score <- auc(roc_curve)
+print(auc_score)
+
+confusion_matrix <- confusionMatrix(as.factor(naive_preds$preds), as.factor(card_fraud_test$is_fraud))
+sensitivity <- confusion_matrix$byClass['Sensitivity']
+specificity <- confusion_matrix$byClass['Specificity']
+print(paste("Sensitivity:", sensitivity))
+print(paste("Specificity:", specificity))
+```
+
+
 ## `last_fit()`
 ```{r}
 
@@ -762,7 +781,6 @@ last_fit_xgb %>% collect_metrics(summarize = TRUE)
 #Compare to training subsample
 xgb_res %>% collect_metrics(summarize = TRUE)
 ```
-
 
 
 ## Get variable importance using `vip` package

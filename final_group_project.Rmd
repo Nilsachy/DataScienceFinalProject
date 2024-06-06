@@ -398,7 +398,10 @@ data_split <- initial_split(my_card_fraud, # updated data
                            prop = 0.8, 
                            strata = is_fraud)
 
+# assign training data
 card_fraud_train <- training(data_split) 
+
+# assign test data
 card_fraud_test <- testing(data_split)
 ```
 
@@ -408,10 +411,15 @@ card_fraud_test <- testing(data_split)
 Start with 3 CV folds to quickly get an estimate for the best model and you can increase the number of folds to 5 or 10 later.
 
 ```{r}
+# set seed for replication of results
 set.seed(123)
+
+# define cross validation folds
 cv_folds <- vfold_cv(data = card_fraud_train, 
                           v = 3, 
                           strata = is_fraud)
+
+# show folds
 cv_folds 
 ```
 
@@ -422,14 +430,24 @@ What steps are you going to add to your recipe? Do you need to do any log transf
 
 ```{r, define_recipe}
 
-fraud_rec <- recipe(is_fraud ~ ., data = card_fraud_train) %>%
+fraud_rec <- 
+  # craft recipe
+  recipe(
+    # as we only included variables of interest in our redefined card fraud
+    # dataset, we are running the model against all variables
+    is_fraud ~ ., data = card_fraud_train) %>%
+  # convert the amount to log
   step_log(amt) %>% 
+  # exclude NAs
   step_naomit(everything(), skip = TRUE) %>% 
+  # convert nominal variables to factors
   step_novel(all_nominal(), -all_outcomes()) %>%
+  # normalise numerical variables
   step_normalize(all_numeric(), -all_outcomes()) %>% 
+  # convert nominal variables to dummies
   step_dummy(all_nominal(), -all_outcomes()) %>%
-  step_zv(all_numeric(), -all_outcomes()) # %>%
-  # step_corr(all_predictors(), threshold = 0.7, method = "spearman")
+  # remove numeric variables with zero variance
+  step_zv(all_numeric(), -all_outcomes()) 
 
 fraud_rec
 ```
@@ -471,6 +489,11 @@ log_spec <-  logistic_reg() %>%  # model type
 
 # Show your model specification
 log_spec
+```
+
+
+```{r, define_models}
+# Define other models
 
 # Decision Tree
 tree_spec <- decision_tree() %>%
@@ -547,17 +570,27 @@ You may want to compare the time it takes to fit each model. `tic()` starts a si
 
 ```{r, fit_models}
 # Log model
+
+# start timer
 tic()
+# assign results object
 log_res <- log_wflow %>% 
+  # fit model on the different folds and evaluate
   fit_resamples(
+    # define which folds to use
     resamples = cv_folds, 
+    # model metrics
     metrics = metric_set(
       recall, precision, f_meas, accuracy,
       kap, roc_auc, sens, spec),
     control = control_resamples(save_pred = TRUE)) 
+# stop timer and assign to time object
 time <- toc()
+# save model time to object
 log_time <- time[[4]]
 
+
+# run the same process for other workflows / models
 
 # tree model
 tic()
@@ -615,12 +648,16 @@ knn_res <- knn_wflow %>%
 ```{r, compare_models}
 ## Model Comparison
 
+# assign results to object
 log_metrics <- 
+  # use defined log_res that ran the model
   log_res %>% 
+  # collect metrics
   collect_metrics(summarize = TRUE) %>%
   # add the name of the model to every row
   mutate(model = "Logistic Regression",
          time = log_time)
+
 
 # add more models here
 
@@ -664,7 +701,7 @@ model_compare <- bind_rows(log_metrics,
   mutate(time = str_sub(time, end = -13) %>% 
            as.double()
          )
-
+# display model results dataframe
 model_compare
 ```
 
@@ -694,6 +731,9 @@ model_comp %>%
 ```
 
 
+> WRITE UP THE MODEL RESULTS HERE
+
+
 ## Which metric to use
 
 This is a highly imbalanced data set, as roughly 99.5% of all transactions are ok, and it's only 0.5% of transactions that are fraudulent. A `naive` model, which classifies everything as ok and not-fraud, would have an accuracy of 99.5%, but what about the sensitivity, specificity, the AUC, etc?
@@ -706,12 +746,17 @@ This is a highly imbalanced data set, as roughly 99.5% of all transactions are o
 # - `last_fit()`  fits a model to the whole training data and evaluates it on the test set. 
 # - provide the workflow object of the best model as well as the data split object (not the training data). 
  
-last_fit_xgb <- last_fit(xgb_wflow, 
-                        split = data_split,
-                        metrics = metric_set(
-                          accuracy, f_meas, kap, precision,
-                          recall, roc_auc, sens, spec))
+last_fit_xgb <- last_fit(
+  # choose XGBoost as best model
+  xgb_wflow, 
+  # define data split as specified at the beginning
+  split = data_split,
+  # choose metrics for evaluation
+  metrics = metric_set(
+    accuracy, f_meas, kap, precision,
+    recall, roc_auc, sens, spec))
 
+# collect metrics
 last_fit_xgb %>% collect_metrics(summarize = TRUE)
 
 #Compare to training subsample

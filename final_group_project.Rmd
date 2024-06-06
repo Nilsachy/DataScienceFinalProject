@@ -237,6 +237,8 @@ card_fraud %>%
     addLegend('bottomright', pal = colorFactor(rainbow(length(unique(card_fraud$state))), card_fraud$state), values = ~state, title = 'State', opacity = 1)
 ```
 
+> Paragraph
+
 ## Visualize fraud over weekday
 
 ```{r}
@@ -254,6 +256,9 @@ card_fraud %>%
       theme_minimal()
 ```
 
+> paragraph
+
+
 ## Fraud over hour of the day
 
 ```{r}
@@ -269,6 +274,9 @@ card_fraud %>%
       labs(x = "Hour", y = "Ratio of fraudulent transactions", title = "Ratio of fraud happening per hour") +
       theme_minimal()
 ```
+
+> paragraph
+
 We find three groups with different likelihoods of frauds / "peak hours" for fraudulent transactions. Based on this, we classify three groups for our model:
 
 ```{r}
@@ -300,6 +308,9 @@ card_fraud %>%
       labs(x = "Age", y = "Ratio of fraudulent transactions", title = "Ratio of fraud happening for each age in years") +
       theme_minimal()
 ```
+
+> paragraph
+
 
 ```{r}
 # Define age groups
@@ -334,7 +345,7 @@ card_fraud %>%
   NULL
 ```
 
-
+> paragraph
 
 ## Visualize number of fraudulent transactions over time
 
@@ -756,6 +767,8 @@ print(paste("Sensitivity:", sensitivity))
 print(paste("Specificity:", specificity))
 ```
 
+> INTERPRET RESULTS OF NAIVE MODEL
+
 
 ## `last_fit()`
 ```{r}
@@ -798,6 +811,9 @@ last_fit_xgb %>%
   theme_light()
 ```
 
+
+> INTERPRET VARIABLE IMPORTANCE
+
 ## Plot Final Confusion matrix and ROC curve
 
 
@@ -816,6 +832,9 @@ last_fit_xgb %>%
   roc_curve(is_fraud, .pred_1) %>% 
   autoplot()
 ```
+
+> INTERPRET RESULTS OF BEST MODEL
+
 
 #  Calculating the cost of fraud to the company
 
